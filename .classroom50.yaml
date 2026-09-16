@@ -1,0 +1,13 @@
+schema: "classroom50/repo-config/v1"
+classroom: "csci4431"
+assignment: "project1-app-protocol"
+secret: "bfan6x3ktb5hjzckbgud"
+owner:
+  username: "Jordan-Stier"
+  id: 228572939
+  accepted_at: "2026-09-16T21:34:32Z"
+source:
+  owner: "gw-computer-networks-f26"
+  owner_id: 316684915
+  repo: "project1-starter"
+  branch: "main"
