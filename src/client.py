@@ -27,6 +27,7 @@ def send_request(sock: socket.socket, server: tuple[str, int], line: str) -> Non
     Your protocol goes here: build the request bytes per your spec, send them,
     then parse the response.
     """
+    # Jordan: I don't know if we really need to do anything client side to build.
     sock.sendto(line.encode(), server)
 
     try:
@@ -36,10 +37,12 @@ def send_request(sock: socket.socket, server: tuple[str, int], line: str) -> Non
         # not running, wrong host/port, blocked by a firewall, or a bug on its side.
         # Your spec should say what the client tells the user when this happens.
         print(f"  (no reply within {TIMEOUT_SECONDS}s)")
+        #TODO:
         return
 
+    #TODO: should parse out and make the response easily readable.
+    # What that means will depend on the message type received.
     print(f"  <- {data.decode(errors='replace')}")
-
 
 def main() -> None:
     ap = argparse.ArgumentParser(description="Project 1 UDP client")
