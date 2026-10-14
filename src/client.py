@@ -11,6 +11,8 @@ protocol's messages.
 import argparse
 import socket
 
+import messages # custom file for shared functionality
+
 # For this project you may assume the network is reliable: every datagram arrives,
 # exactly once, in order. So you do NOT need retransmission, acknowledgements or
 # sequence numbers -- that is Project 2's subject.
@@ -28,6 +30,7 @@ def send_request(sock: socket.socket, server: tuple[str, int], line: str) -> Non
     then parse the response.
     """
     # Jordan: I don't know if we really need to do anything client side to build.
+
     sock.sendto(line.encode(), server)
 
     try:

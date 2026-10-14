@@ -11,7 +11,11 @@ own message parsing and response logic.
 
 import argparse
 import socket
-import datetime
+
+
+from datetime import datetime as dt
+import json
+import messages # Custom file for shared functionality
 
 
 def handle(data: bytes, addr: tuple[str, int]) -> bytes:
@@ -27,34 +31,62 @@ def handle(data: bytes, addr: tuple[str, int]) -> bytes:
       - whether you reply with an error or stay silent, and what an error looks like
       - `addr` is the only thing identifying the client, and it is spoofable
     """
-    # TODO:Parse Message type
-
+    # Parse Message type
+    message = data.decode("utf-8")
+    mtype, acode, params = messages.unformat_message(message)
     # Match to an existing one or throw an error
     # Given a specific message type, go to a specific routine
+    match mtype:
+        case "Status Request":
+            response = get_status()
+        case "Locations Request":
+            response = get_locations(params["Limit"])
+        case "Forecast Request":
+            response = get_forecasts(params["Location"], \
+                params["ConditionNames"], params["AdditionalDays"])
+        case "Auth Request":
+            response = grant_auth(params["Password"])
+        case "Append Forecast Data Request":
+            response = append_forecast(acode, params["Location"], \
+                params["Conditions"])
+        case "Edit Forecast Data Request":
+            response = edit_forecast(acode, params["Location"], params["Date"],\
+                params["Conditions"])
+        case "Append Location Data Request":
+            response = add_location(acode, params["LocationCode"],\
+                params["LocationName"])
+        case _:
+            response = give_error("UNKNOWN MESSAGE")
 
     print(f"  <- {len(data)} bytes from {addr[0]}:{addr[1]}: {data!r}", flush=True)
     return data
 
 #TODO:
-def error_check(message: str):
+def error_check(message: str) -> dict:
     """Checks for any errors in a provided message.
-    If there's an error with it, raises that error.
+    If there's an error with it, makes that error.
     """
 
     return
 
-#TODO:
-def get_status() -> str:
+def get_status() -> dict:
     """Provide the server's status.
     Curren local date and time,
     If an Admin is active,
     & Uptime.
     """
+    response = {"CurTime": None, "LocalDate": None,
+        "AdminActive": admin_active, "Uptime": None}
+    
+    now = dt.now()
+    response["CurTime"] = now.time()
+    response["LocalDate"] = now.date()
+    response["Uptime"] = (now-start_time).total_seconds()
 
-    return
+    return response
 
 #TODO:
-def get_locations(limit: int = -1) -> str:
+def get_locations(limit: int = -1) -> dict:
     """Provide the location dictionary.
     Convert it into a string matching format specification.
     """
@@ -62,13 +94,13 @@ def get_locations(limit: int = -1) -> str:
     return
 
 #TODO:
-def get_forecasts(location: str, condition_names: list[str] | None = None, additional_days: int = 0) -> str:
+def get_forecasts(location: str, condition_names: list[str] | None = None, additional_days: int = 0) -> dict:
     """Provide the forecast
     """
     return
 
 #TODO:
-def grant_auth(password: str) -> str:
+def grant_auth(password: str) -> dict:
     """Check if the password matches one of an authorized user,
     then generate & store a temporary authorization code.
     Provide that & the expiry time to the user.
@@ -76,19 +108,25 @@ def grant_auth(password: str) -> str:
     return
 
 #TODO: also fill in remaining params
-def append_forecast(authcode: str, location: str, ) -> str:
+def append_forecast(authcode: str, location: str, conditions: dict[str, float|int|str]) -> dict:
 
     return
 
 #TODO: also fill in remaining params
-def edit_forecast(authcode: str, location: str, date: str, ) -> str:
+def edit_forecast(authcode: str, location: str, date: str, ) -> dict:
 
     return
 
 #TODO:
-def add_location(authcode: str, loc_code: str, location: str) -> str:
+def add_location(authcode: str, loc_code: str, location: str) -> dict:
 
     return
+
+#TODO:
+def give_error(error_code: str) -> dict:
+    """Given an erorr code, passes back an error response with the
+    appropriate message.
+    """
 
 def main() -> None:
     ap = argparse.ArgumentParser(description="Project 1 UDP server")
@@ -99,14 +137,18 @@ def main() -> None:
     # SOCK_DGRAM is UDP. There is no listen() and no accept() — no connections exist.
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.bind((args.host, args.port))
-    print(f"listening on {args.host}:{args.port} (ctrl-c to stop)", flush=True)
 
-    # defaults
-    #TODO: load dictionary (if we want it to persist). Or just make it
-    #TODO: load default weather.
+    # default server vars
+    # Server status vars
+    start_time = dt.now()
+    admin_active = False
+    #TODO: load locations dictionary.
+    #TODO: set default weather.
     #TODO: set up codes
     accepted_passwords = []
     authcodes = {}
+
+    print(f"listening on {args.host}:{args.port} (ctrl-c to stop)", flush=True)
 
     try:
         while True:
