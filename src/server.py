@@ -12,11 +12,28 @@ own message parsing and response logic.
 import argparse
 import socket
 
-
-from datetime import datetime as dt
+import string
+import random
+from datetime import datetime as dt, timedelta as tdelt
+# These 2 are for saving and loading locations
 import json
+import os
 import messages # Custom file for shared functionality
 
+error_dict = {
+    "UNKNOWN LOCATION": "The requested location code is not that of a supported location.",
+    "INVALID FORMAT": "The message does not follow WSP format.",
+    "UNKNOWN MESSAGE": "The message type is not supported by WSP.",
+    "MISSING PARAMETER": "The request does not contain a required parameter.",
+    "PREEXISTING LOCATION": "The location to be added has the same code as another location.",
+    "NEED AUTH": "Insufficient authorization provided for the attempted action.",
+    "INVALID UNIT": "The UNIT value is not F or C.",
+    "INVALID DAYS": "The requested number of forecast days is greater than 14.",
+    "INVALID FIELD": "A field contains an unsupported/invalid value.",
+    "MISC ERROR": "Unspecified/Unknown error."
+}
+
+FILE = "locations.json" #location file
 
 def handle(data: bytes, addr: tuple[str, int]) -> bytes:
     """Handle one datagram and return the bytes to send back.
@@ -31,6 +48,7 @@ def handle(data: bytes, addr: tuple[str, int]) -> bytes:
       - whether you reply with an error or stay silent, and what an error looks like
       - `addr` is the only thing identifying the client, and it is spoofable
     """
+    response = None
     # Parse Message type
     message = data.decode("utf-8")
     mtype, acode, params = messages.unformat_message(message)
@@ -62,12 +80,25 @@ def handle(data: bytes, addr: tuple[str, int]) -> bytes:
     return data
 
 #TODO:
-def error_check(message: str) -> dict:
-    """Checks for any errors in a provided message.
-    If there's an error with it, makes that error.
-    """
+def error_check(message: str) -> Tuple[boolean, dict]:
+    """Checks for general errors in a provided message.
+    If there's an error with it, responds with that error.
 
-    return
+    Returns a tuple. 
+    Value 1 is a boolean - True if an error was found, False if not
+    Value 2 is a dict with 1 kvp contained (error code and message)
+    """
+    # unknown location
+    # invalid format
+    # missing params
+    # preexisting location
+    # need auth
+    # invalid unit
+    # invalid days
+    # invalid field
+    # misc error
+
+    return (False, None)
 
 def get_status() -> dict:
     """Provide the server's status.
@@ -99,34 +130,64 @@ def get_forecasts(location: str, condition_names: list[str] | None = None, addit
     """
     return
 
-#TODO:
 def grant_auth(password: str) -> dict:
     """Check if the password matches one of an authorized user,
     then generate & store a temporary authorization code.
     Provide that & the expiry time to the user.
     """
-    return
+    if password not in accepted_passwords:
+        return None
+    # Always generates, in case someone wants to refresh their authcode
+    # generate an authcode
+    authcode = ''.join(random.choices(string.ascii_letters+string.digits, k=6))
+    # generate an expiry time, 1 hr from now
+    expireTime = dt.now()+tdelt(hours=1)
+
+    authcodes[password] = (authcode, expireTime)
+
+    return {"Code": authcodes[password][0], "ExpiryTime": authcodes[password][1]}
 
 #TODO: also fill in remaining params
 def append_forecast(authcode: str, location: str, conditions: dict[str, float|int|str]) -> dict:
-
+    clean_auth() # to ensure authcode is fine
     return
 
 #TODO: also fill in remaining params
 def edit_forecast(authcode: str, location: str, date: str, ) -> dict:
-
+    clean_auth() # to ensure authcode is fine
     return
 
 #TODO:
 def add_location(authcode: str, loc_code: str, location: str) -> dict:
-
+    clean_auth() # to ensure authcode is fine
     return
 
-#TODO:
 def give_error(error_code: str) -> dict:
-    """Given an erorr code, passes back an error response with the
+    """Given an error code, passes back an error response with the
     appropriate message.
     """
+    if error_code in error_dict:
+        return {error_code: error_dict[error_code]}
+    else:
+        return {"MISC ERROR": error_dict["MISC ERROR"]}
+
+def validate_auth(authcode):
+    """Helper Function. Validates if an authcode is good
+    or not.
+    """
+    now = dt.now()
+    for password, (code, expire) in authcodes.items():
+        if code == authcode and now < expire:
+            return True
+
+    return False
+
+def clean_auth():
+    """Helper Function. Removes expired authcodes."""
+    now = dt.now()
+    for password, (code, expiry) in authcodes.items():
+        if now >= expiry:
+            del authcodes[password]
 
 def main() -> None:
     ap = argparse.ArgumentParser(description="Project 1 UDP server")
@@ -142,16 +203,35 @@ def main() -> None:
     # Server status vars
     start_time = dt.now()
     admin_active = False
-    #TODO: load locations dictionary.
+    # load location dict or create if DNE
+    if not os.path.exists(FILE):
+        locations = {
+            "BOS": "Boston",
+            "NYC": "New York",
+            "TKY": "Tokyo",
+            "SGP": "Singapore",
+            "LAX": "Los Angeles",
+            "DET": "Detroit"
+        }
+        with open(FILE, "w") as file:
+            json.dump(locations, file, indent=4)
+    else:
+        with open(FILE, "r") as file:
+            locations = json.load(file)
+    with open("locations.json", "r") as f:
+        locations = json.load(f)
+    
     #TODO: set default weather.
     #TODO: set up codes
-    accepted_passwords = []
+    accepted_passwords = ["Password123", "XKCD", "123!/x"]
+    # dict. Key = password, value = tuple of Code & ExpiryTime
     authcodes = {}
 
     print(f"listening on {args.host}:{args.port} (ctrl-c to stop)", flush=True)
 
     try:
         while True:
+            # Re
             # 65535 is the largest a UDP datagram can be (about 65 KB of payload).
             # A message bigger than that cannot be sent at all, so if your protocol
             # can produce one, your spec has to say what the sender does instead.
