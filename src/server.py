@@ -15,9 +15,7 @@ import socket
 import string
 import random
 from datetime import datetime as dt, timedelta as tdelt
-# These 2 are for saving and loading locations
-import json
-import os
+
 import messages # Custom file for shared functionality
 
 ERROR_DICT = {
@@ -32,8 +30,6 @@ ERROR_DICT = {
     "INVALID FIELD": "A field contains an unsupported/invalid value.",
     "MISC ERROR": "Unspecified/Unknown error."
 }
-
-FILE = "locations.json" #location file
 
 CONDITIONS = {
     "Desc": ["Sunny", "Cloudy", "Overcast", "Rainy", "Storms"],
@@ -336,23 +332,15 @@ def main() -> None:
     # Server status vars
     start_time = dt.now()
     admin_active = False
-    # load location dict or create if DNE
-    if not os.path.exists(FILE):
-        locations = {
-            "BOS": "Boston",
-            "NYC": "New York",
-            "TKY": "Tokyo",
-            "SGP": "Singapore",
-            "LAX": "Los Angeles",
-            "DET": "Detroit"
+    #location dict
+    locations = {
+        "BOS": "Boston",
+        "NYC": "New York",
+        "TKY": "Tokyo",
+        "SGP": "Singapore",
+        "LAX": "Los Angeles",
+        "DET": "Detroit"
         }
-        with open(FILE, "w") as file:
-            json.dump(locations, file, indent=4)
-    else:
-        with open(FILE, "r") as file:
-            locations = json.load(file)
-    with open("locations.json", "r") as f:
-        locations = json.load(f)
     
     # set default weather.
     forecasts = {
