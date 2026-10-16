@@ -42,6 +42,8 @@ CONDITIONS = {
     "WDir": ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSW",
             "SW", "WSW", "W", "WNW", "NW", "NNW"]
 }
+CONDITION_TYPES = ["Desc","Humidity", "PChance", 
+        "PType", "Temp","UV", "WDir", "WSpeed"]
 
 def handle(data: bytes, addr: tuple[str, int]) -> bytes:
     """Handle one datagram and return the bytes to send back.
@@ -114,7 +116,7 @@ def get_status() -> dict:
     If an Admin is active,
     & Uptime.
     """
-    response = {"CurTime": None, "LocalDate": None,
+    response = {"Message Type": "Status Response","CurTime": None, "LocalDate": None,
         "AdminActive": admin_active, "Uptime": None}
     
     now = dt.now()
@@ -124,7 +126,6 @@ def get_status() -> dict:
 
     return response
 
-#TODO:
 def get_locations(limit: int = -1) -> dict:
     """Provide the location dictionary.
     Convert it into a string matching format specification.
@@ -133,21 +134,49 @@ def get_locations(limit: int = -1) -> dict:
         limit = len(locations)
     # get items in location. make a list of them. truncate based on limit.
     # make a dict of that.
-    return {"LocationDictionary": dict(list(locations.items())[:limit])}
+    return {"Message Type": "Locations Response",
+        "LocationDictionary": dict(list(locations.items())[:limit])}
 
-#TODO:
-def get_forecasts(location: str, condition_names: list[str] | None = None, additional_days: int = 0) -> dict:
-    """Provide the forecast
-    """
-    return
+def get_forecasts(location_code: str, condition_names: list[str] | None = None, additional_days: int = 0) -> dict:
+    """Provide the forecast for a specific location up to a # of days."""
+    if location_code not in locations:
+        return give_error("UNKNOWN LOCATION")
+    if additional_days > 14 or additional_days < 0:
+        return give_error("INVALID DAYS")
+
+    result = {"Message Type": "Forecase Response",
+              "Location": location[location_code]}
+    loc_forecasts = forecasts[location_code]
+
+    # additional_days+1 since default is to only give today
+    for day_num in range(additional_days+1):
+        day = (day.today() + timedelta(days=day_num)).isoformat()
+        # for safety
+        if day not in loc_forecasts:
+            continue
+        # gets all conditions
+        conditions = loc_forecasts[day]
+        # filters
+        if condition_names is not None and len(condition_names) > 0:
+            conditions = {
+                name: cond
+                for name, cond in conditions.items() if name in condition_names
+            }
+        
+        result[day_num] = conditions
+    
+    return result
 
 def grant_auth(password: str) -> dict:
     """Check if the password matches one of an authorized user,
     then generate & store a temporary authorization code.
     Provide that & the expiry time to the user.
     """
+    clean_auth()
     if password not in accepted_passwords:
-        return None
+        # Realized none of our errors really make sense if someone
+        # without auth tries to get it. Closest match.
+        return give_error("NEED AUTH")
     # Always generates, in case someone wants to refresh their authcode
     # generate an authcode
     authcode = ''.join(random.choices(string.ascii_letters+string.digits, k=6))
@@ -156,44 +185,82 @@ def grant_auth(password: str) -> dict:
 
     authcodes[password] = (authcode, expireTime)
 
-    return {"Code": authcodes[password][0], "ExpiryTime": authcodes[password][1]}
+    return {"Message Type": "Auth Response",
+        "Code": authcodes[password][0], "ExpiryTime": authcodes[password][1]}
 
-#TODO: also fill in remaining params
-def append_forecast(authcode: str, location: str, conditions: dict[str, float|int|str]) -> dict:
+def append_forecast(authcode: str, location_code: str, conditions: dict[str, float|int|str]) -> dict:
+    """If user is authenticated, appends the day's conditions to the next open date
+    for a location.
+    """
+    clean_auth()
+    if location_code not in locations:
+        return give_error("UNKNOWN LOCATION")
+    if authcode not in authcodes:
+        return give_error("NEED AUTH")
+    if len(conditions) < len(CONDITION_TYPES):
+        return give_error("MISSING PARAMETER")
+    for cond in conditions:
+        if cond not in CONDITION_TYPES:
+            return give_error("INVALID FIELD")
+    
+    # find next unset day
+    loc_forecasts = forecasts[location_code]
+    next_day = date.today()
+    while next_day.isoformat() in loc_forecasts:
+        next_day += timedelta(days=1)
+
+    # adds forecase
+    location_forecasts[next_day.isoformat()] = conditions.copy()
+
+    return {"Message Type": "Append Forecast Data Response", 
+            "Location": locations[location_code], "Date": next_day.isoformat(),
+            "Conditions": conditions}
+
+def edit_forecast(authcode: str, location_code: str, forec_date: str,
+                        conditions: dict[str, float|int|str]) -> dict:
+    """Updates the forecast on a given date with those conditions."""
     clean_auth() # to ensure authcode is fine
-    return
+    if location_code not in locations:
+        return give_error("UNKNOWN LOCATION")
+    if authcode not in authcodes:
+        return give_error("NEED AUTH")
+    for cond in conditions:
+        if cond not in CONDITION_TYPES:
+            return give_error("INVALID FIELD")
+    if forec_date not in forecasts[location_code]:
+        return give_error("INVALID FIELD")
 
-#TODO: also fill in remaining params
-def edit_forecast(authcode: str, location: str, date: str, ) -> dict:
-    clean_auth() # to ensure authcode is fine
-    return
+    current = forecasts[location_code][forec_date]
+    old_conds = {
+        name: old[name] for name in conditions
+    }
+    
+    current.update(conditions)
 
-#TODO:
+    return {"Message Type": "Edit Forecast Data Response",
+            "Location": locations[location_code],
+            "Old": old_conds, "New": conditions.copy()}
+
 def add_location(authcode: str, loc_code: str, location: str) -> dict:
+    """Updates the locations dict with a new location."""
     clean_auth() # to ensure authcode is fine
-    if authcode in authcodes:
-        
-    return
+    if authcode not in authcodes:
+        return give_error("NEED AUTH")
+    if loc_code in locations:
+        return give_error("PREEXISTING LOCATION")
+    locations[loc_code] = location
+    return {"Message Type": "Append Location Data Response"}
 
 def give_error(error_code: str) -> dict:
     """Given an error code, passes back an error response with the
     appropriate message.
     """
     if error_code in ERROR_DICT:
-        return {error_code: ERROR_DICT[error_code]}
+        return {"Message Type": "Error Message",
+            "Error Code": error_code, "Message": ERROR_DICT[error_code]}
     else:
-        return {"MISC ERROR": ERROR_DICT["MISC ERROR"]}
-
-def validate_auth(authcode):
-    """Helper Function. Validates if an authcode is good
-    or not.
-    """
-    now = dt.now()
-    for password, (code, expire) in authcodes.items():
-        if code == authcode and now < expire:
-            return True
-
-    return False
+        return {"Message Type": "Error Message",
+            "Error Code": "MISC ERROR", "Message": ERROR_DICT["MISC ERROR"]}
 
 def clean_auth():
     """Helper Function. Removes expired authcodes."""
