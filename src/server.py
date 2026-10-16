@@ -20,7 +20,7 @@ import json
 import os
 import messages # Custom file for shared functionality
 
-error_dict = {
+ERROR_DICT = {
     "UNKNOWN LOCATION": "The requested location code is not that of a supported location.",
     "INVALID FORMAT": "The message does not follow WSP format.",
     "UNKNOWN MESSAGE": "The message type is not supported by WSP.",
@@ -34,6 +34,14 @@ error_dict = {
 }
 
 FILE = "locations.json" #location file
+
+CONDITIONS = {
+    "Desc": ["Sunny", "Cloudy", "Partly Cloudy", "Rainy", "Storms"],
+    "PType": ["None", "Rain", "Snow", "Sleet", "Hail"],
+    # I dont want to bother being fancy. brute force.
+    "WDir": ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSW",
+            "SW", "WSW", "W", "WNW", "NW", "NNW"]
+}
 
 def handle(data: bytes, addr: tuple[str, int]) -> bytes:
     """Handle one datagram and return the bytes to send back.
@@ -121,8 +129,11 @@ def get_locations(limit: int = -1) -> dict:
     """Provide the location dictionary.
     Convert it into a string matching format specification.
     """
-    
-    return
+    if limit == -1:
+        limit = len(locations)
+    # get items in location. make a list of them. truncate based on limit.
+    # make a dict of that.
+    return {"LocationDictionary": dict(list(locations.items())[:limit])}
 
 #TODO:
 def get_forecasts(location: str, condition_names: list[str] | None = None, additional_days: int = 0) -> dict:
@@ -160,16 +171,18 @@ def edit_forecast(authcode: str, location: str, date: str, ) -> dict:
 #TODO:
 def add_location(authcode: str, loc_code: str, location: str) -> dict:
     clean_auth() # to ensure authcode is fine
+    if authcode in authcodes:
+        
     return
 
 def give_error(error_code: str) -> dict:
     """Given an error code, passes back an error response with the
     appropriate message.
     """
-    if error_code in error_dict:
-        return {error_code: error_dict[error_code]}
+    if error_code in ERROR_DICT:
+        return {error_code: ERROR_DICT[error_code]}
     else:
-        return {"MISC ERROR": error_dict["MISC ERROR"]}
+        return {"MISC ERROR": ERROR_DICT["MISC ERROR"]}
 
 def validate_auth(authcode):
     """Helper Function. Validates if an authcode is good
@@ -188,6 +201,31 @@ def clean_auth():
     for password, (code, expiry) in authcodes.items():
         if now >= expiry:
             del authcodes[password]
+
+def generate_day() -> dict:
+    """Generates random weather information for a single day. Not fancy.
+    Will have weird days like 'Sunny, PChance 95%, Hail, Wind 40 MPH'.
+    """
+    wdict = {"Desc": None,"Humidity": None, "PChance": None, 
+        "PType": None, "Temp": None,"UV": None, "WDir": None,
+        "WSpeed": None}
+    wdict["Desc"] = random.choice(CONDITIONS["Desc"])
+    wdict["Humidity"] = round(random.uniform(0, 1), 2)
+    wdict["PChance"] = round(random.uniform(0, 1), 2)
+    wdict["PType"] = random.choice(CONDITIONS["PType"])
+    # gets a random temp & clamps b/w -10 and 105 F.
+    wdict["Temp"] = round(max(-10, min(105 ,random.normalvariate(65, 15))), 1)
+    wdict["UV"] = round(random.uniform(0,11), 1)
+    wdict["WDir"] = random.choice(CONDITIONS["WDir"])
+    wdict["WSpeed"] = random.uniform(0, 50)
+    
+    return wdict
+
+def generate_forecast(days = 15):
+    forecast = {}
+    for i in range(days):
+        day = date.today() + timedelta(days=i)
+        forecast[day.isoformat()]=generate_day()
 
 def main() -> None:
     ap = argparse.ArgumentParser(description="Project 1 UDP server")
@@ -221,8 +259,11 @@ def main() -> None:
     with open("locations.json", "r") as f:
         locations = json.load(f)
     
-    #TODO: set default weather.
-    #TODO: set up codes
+    # set default weather.
+    forecasts = {
+        code: generate_forecast() for code in locations
+    }
+    # set up codes
     accepted_passwords = ["Password123", "XKCD", "123!/x"]
     # dict. Key = password, value = tuple of Code & ExpiryTime
     authcodes = {}
