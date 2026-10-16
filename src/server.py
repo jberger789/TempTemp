@@ -36,13 +36,13 @@ ERROR_DICT = {
 FILE = "locations.json" #location file
 
 CONDITIONS = {
-    "Desc": ["Sunny", "Cloudy", "Partly Cloudy", "Rainy", "Storms"],
+    "Desc": ["Sunny", "Cloudy", "Overcast", "Rainy", "Storms"],
     "PType": ["None", "Rain", "Snow", "Sleet", "Hail"],
     # I dont want to bother being fancy. brute force.
     "WDir": ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSW",
             "SW", "WSW", "W", "WNW", "NW", "NNW"]
 }
-CONDITION_TYPES = ["Desc","Humidity", "PChance", 
+CONDITION_TYPES = ["Desc","Humid", "PChance", 
         "PType", "Temp","UV", "WDir", "WSpeed"]
 
 def handle(data: bytes, addr: tuple[str, int]) -> bytes:
@@ -60,8 +60,10 @@ def handle(data: bytes, addr: tuple[str, int]) -> bytes:
     """
     response = None
     # Parse Message type
-    message = data.decode("utf-8")
+    message = data.decode("ascii")
+    # TODO: depending on implementation, may have to try-catch errors
     mtype, acode, params = messages.unformat_message(message)
+    
     # Match to an existing one or throw an error
     # Given a specific message type, go to a specific routine
     match mtype:
@@ -86,6 +88,9 @@ def handle(data: bytes, addr: tuple[str, int]) -> bytes:
         case _:
             response = give_error("UNKNOWN MESSAGE")
 
+    params = {key:val for key, val in response.items() if key != "Message Type"}
+    data = messages.format_message(response["Message Type"], None,params)
+
     print(f"  <- {len(data)} bytes from {addr[0]}:{addr[1]}: {data!r}", flush=True)
     return data
 
@@ -98,6 +103,10 @@ def error_check(message: str) -> Tuple[boolean, dict]:
     Value 1 is a boolean - True if an error was found, False if not
     Value 2 is a dict with 1 kvp contained (error code and message)
     """
+    # Note: considering a lot of these are "message specific", I think
+    # it may make sense to leave those for within the messages. Also
+    # was a little silly to define the order we did for them. -Jordan
+
     # unknown location
     # invalid format
     # missing params
@@ -116,12 +125,15 @@ def get_status() -> dict:
     If an Admin is active,
     & Uptime.
     """
+    # I think we forgot a TimeZone field in the spec
     response = {"Message Type": "Status Response","CurTime": None, "LocalDate": None,
-        "AdminActive": admin_active, "Uptime": None}
+        "TimeZone": None,"AdminActive": admin_active, "Uptime": None}
     
-    now = dt.now()
-    response["CurTime"] = now.time()
-    response["LocalDate"] = now.date()
+    now = dt.now().astimezone()
+
+    response["CurTime"] = now.strftime("%H:%M")
+    response["LocalDate"] = now.strftime("%Y-%m-%d")
+    response["TimeZone"] = now.tzname()
     response["Uptime"] = (now-start_time).total_seconds()
 
     return response
@@ -183,10 +195,10 @@ def grant_auth(password: str) -> dict:
     # generate an expiry time, 1 hr from now
     expireTime = dt.now()+tdelt(hours=1)
 
-    authcodes[password] = (authcode, expireTime)
+    authcodes[authcode] = expireTime
 
     return {"Message Type": "Auth Response",
-        "Code": authcodes[password][0], "ExpiryTime": authcodes[password][1]}
+        "Code": authcode, "ExpiryTime": int(expireTime.timestamp())}
 
 def append_forecast(authcode: str, location_code: str, conditions: dict[str, float|int|str]) -> dict:
     """If user is authenticated, appends the day's conditions to the next open date
@@ -195,6 +207,8 @@ def append_forecast(authcode: str, location_code: str, conditions: dict[str, flo
     clean_auth()
     if location_code not in locations:
         return give_error("UNKNOWN LOCATION")
+    if not set(CONDITION_TYPES).issubset(conditions):
+        return give_error("MISSING PARAMETER")
     if authcode not in authcodes:
         return give_error("NEED AUTH")
     if len(conditions) < len(CONDITION_TYPES):
@@ -222,11 +236,19 @@ def edit_forecast(authcode: str, location_code: str, forec_date: str,
     clean_auth() # to ensure authcode is fine
     if location_code not in locations:
         return give_error("UNKNOWN LOCATION")
+    if not set(CONDITION_TYPES).issubset(conditions):
+        return give_error("MISSING PARAMETER")
     if authcode not in authcodes:
         return give_error("NEED AUTH")
     for cond in conditions:
         if cond not in CONDITION_TYPES:
             return give_error("INVALID FIELD")
+    try:
+        parsed_date = dt.strptime(forec_date, "%Y-%m-%d")
+    except ValueError:
+        return give_error("INVALID FIELD")
+    if parsed_date.strftime("%Y-%m-%d") != forec_date:
+        return give_error("INVALID FIELD")
     if forec_date not in forecasts[location_code]:
         return give_error("INVALID FIELD")
 
@@ -249,6 +271,7 @@ def add_location(authcode: str, loc_code: str, location: str) -> dict:
     if loc_code in locations:
         return give_error("PREEXISTING LOCATION")
     locations[loc_code] = location
+    forecasts[loc_code] = {}
     return {"Message Type": "Append Location Data Response"}
 
 def give_error(error_code: str) -> dict:
@@ -257,32 +280,36 @@ def give_error(error_code: str) -> dict:
     """
     if error_code in ERROR_DICT:
         return {"Message Type": "Error Message",
-            "Error Code": error_code, "Message": ERROR_DICT[error_code]}
+            "ErrorCode": error_code, "Message": ERROR_DICT[error_code]}
     else:
         return {"Message Type": "Error Message",
-            "Error Code": "MISC ERROR", "Message": ERROR_DICT["MISC ERROR"]}
+            "ErrorCode": "MISC ERROR", "Message": ERROR_DICT["MISC ERROR"]}
 
 def clean_auth():
     """Helper Function. Removes expired authcodes."""
     now = dt.now()
-    for password, (code, expiry) in authcodes.items():
+    delete_keys = []
+    for code, expiry in authcodes.items():
         if now >= expiry:
-            del authcodes[password]
+            delete_keys.append(code)
+
+    for code in delete_keys:
+        del authcodes[code]
 
 def generate_day() -> dict:
     """Generates random weather information for a single day. Not fancy.
     Will have weird days like 'Sunny, PChance 95%, Hail, Wind 40 MPH'.
     """
-    wdict = {"Desc": None,"Humidity": None, "PChance": None, 
+    wdict = {"Desc": None,"Humid": None, "PChance": None, 
         "PType": None, "Temp": None,"UV": None, "WDir": None,
         "WSpeed": None}
     wdict["Desc"] = random.choice(CONDITIONS["Desc"])
-    wdict["Humidity"] = round(random.uniform(0, 1), 2)
-    wdict["PChance"] = round(random.uniform(0, 1), 2)
+    wdict["Humid"] = round(random.uniform(0, 100), 2)
+    wdict["PChance"] = round(random.uniform(0, 100), 2)
     wdict["PType"] = random.choice(CONDITIONS["PType"])
     # gets a random temp & clamps b/w -10 and 105 F.
     wdict["Temp"] = round(max(-10, min(105 ,random.normalvariate(65, 15))), 1)
-    wdict["UV"] = round(random.uniform(0,11), 1)
+    wdict["UV"] = round(random.uniform(1,11), 1)
     wdict["WDir"] = random.choice(CONDITIONS["WDir"])
     wdict["WSpeed"] = random.uniform(0, 50)
     
@@ -293,6 +320,7 @@ def generate_forecast(days = 15):
     for i in range(days):
         day = date.today() + timedelta(days=i)
         forecast[day.isoformat()]=generate_day()
+    return forecast
 
 def main() -> None:
     ap = argparse.ArgumentParser(description="Project 1 UDP server")
