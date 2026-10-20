@@ -53,15 +53,61 @@ def format_dict(d: dict) -> str:
     return rs
 
 
-def unpack_param_str(param_str: str) -> dict:
-    params = {}
-    #TODO
-    return params
-
 def unformat_message(formatted_str: str) -> tuple[str, str|None, dict|None]:
     '''Returns a ValueError if not in correct format'''
-    message_type,auth_code,ps = formatted_str.split('|')
-    params = unpack_param_str(ps)
+    message_type,auth_code,ps = [x.strip() for x in formatted_str.strip().split('|')]
+    if auth_code == '':
+        auth_code = None
+    if ps != '':
+        params = unpack_param_str(ps)
+    else:
+        params = None
 
     return message_type, auth_code, params
 
+TYPE_CASTS = {'I': int, 'F': float, 'S': str, 'D': date.fromisoformat, 'T': time.fromisoformat}
+
+def unpack_param_str(param_str: str) -> dict:
+    params = {}
+    plist = param_str.split(";")
+    for p in plist:
+        name, ptype, val = [x.strip() for x in p.split('_')]
+        if ptype in TYPE_CASTS:
+            params[name] = TYPE_CASTS[ptype](val)
+        elif len(ptype) == 2:
+            vlist = [x.strip() for x in val.strip('()').split(',,')]
+            if ptype[0] == "L":
+                if ptype[1] in TYPE_CASTS:
+                    if len(vlist) > 0 and vlist[0] != "":
+                        params[name] = [TYPE_CASTS[ptype[1]](v) for v in vlist]
+                    else:
+                        params[name] = []
+            elif ptype[0] == "M":
+                if ptype[1] in TYPE_CASTS:
+                    d = {}
+                    if len(vlist) > 0 and vlist[0] != "":
+                        for v in vlist:
+                            dk,dv = [x.strip() for x in v.split('->')]
+                            d[dk] = TYPE_CASTS[ptype[1]](dv)
+                    params[name] = d
+        if name not in params:
+            raise ValueError(f"Parameter '{name}' has invalid parameter type code '{ptype}'")
+
+    return params
+
+
+
+# elif ptype[0] == "L":
+#             vlist = val.strip('()').split(',,')
+#             if ptype[1] in TYPE_CASTS:
+#                 params[name] = [TYPE_CASTS[ptype[1]](v) for v in vlist]
+#             else:
+#                 raise ValueError(f"List '{name}' has invalid parameter type code '{ptype}'")
+#         elif ptype[0] == "M":
+#             vlist = val.strip('()').split(',,')
+#             if ptype[1] in TYPE_CASTS:
+#                 d = {}
+#                 for v in vlist:
+#                     key,val = v.split('->')
+#                     d[key] = TYPE_CASTS[ptype[1]](val)
+#                 params[name] = d
