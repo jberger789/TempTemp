@@ -84,11 +84,11 @@ def unpack_param_str(param_str: str) -> dict:
         if ptype in TYPE_CASTS:
             if "/" in name:
                 outer,inner = [x.strip() for x in name.split('/')]
-                if "Nested" not in params:
-                    params["Nested"] = {}
-                if outer not in params["Nested"]:
-                    params["Nested"][outer] = {}
-                params["Nested"][outer][inner] = TYPE_CASTS[ptype](val)
+                if "NestedData" not in params:
+                    params["NestedData"] = {}
+                if outer not in params["NestedData"]:
+                    params["NestedData"][outer] = {}
+                params["NestedData"][outer][inner] = TYPE_CASTS[ptype](val)
             else:
                 params[name] = TYPE_CASTS[ptype](val)
         elif len(ptype) == 2:
@@ -108,7 +108,7 @@ def unpack_param_str(param_str: str) -> dict:
                             d[dk] = TYPE_CASTS[ptype[1]](dv)
                     params[name] = d
         if name not in params:
-            if "/" not in name or "Nested" not in params or outer not in params["Nested"] or inner not in params["Nested"][outer]:
+            if "/" not in name or "NestedData" not in params or outer not in params["NestedData"] or inner not in params["NestedData"][outer]:
                 raise ValueError(f"Parameter '{name}' has invalid parameter type code '{ptype}'")
         
         outer = inner = None # To prevent old values from causing issues in certain malformed inputs

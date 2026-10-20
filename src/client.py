@@ -45,7 +45,17 @@ def send_request(sock: socket.socket, server: tuple[str, int], line: str) -> Non
 
     #TODO: should parse out and make the response easily readable.
     # What that means will depend on the message type received.
-    print(f"  <- {data.decode(errors='replace')}")
+    response = data.decode(errors='replace')
+    print(f"Raw Response: {response}")
+    try:
+        message_type,_,params = messages.unformat_message(response)
+        print(f"Message Type: {message_type}")
+        print(f"Message Parameters: {params}")
+    except Exception as e:
+        print("The following error occurred while attempting to parse the message:")
+        print(e)
+
+    # print(f"Parsed:\n{messages.unformat_message(data.decode(errors='replace').)}")
 
 def main() -> None:
     ap = argparse.ArgumentParser(description="Project 1 UDP client")
