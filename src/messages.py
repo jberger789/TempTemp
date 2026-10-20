@@ -94,20 +94,3 @@ def unpack_param_str(param_str: str) -> dict:
             raise ValueError(f"Parameter '{name}' has invalid parameter type code '{ptype}'")
 
     return params
-
-
-
-# elif ptype[0] == "L":
-#             vlist = val.strip('()').split(',,')
-#             if ptype[1] in TYPE_CASTS:
-#                 params[name] = [TYPE_CASTS[ptype[1]](v) for v in vlist]
-#             else:
-#                 raise ValueError(f"List '{name}' has invalid parameter type code '{ptype}'")
-#         elif ptype[0] == "M":
-#             vlist = val.strip('()').split(',,')
-#             if ptype[1] in TYPE_CASTS:
-#                 d = {}
-#                 for v in vlist:
-#                     key,val = v.split('->')
-#                     d[key] = TYPE_CASTS[ptype[1]](val)
-#                 params[name] = d
