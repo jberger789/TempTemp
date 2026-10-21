@@ -99,7 +99,8 @@ class WEP_Server():
             case "Forecast Request":
                 response = self.get_forecasts(params)
             case "Auth Request":
-                response = self.grant_auth(params["Password"])
+                # response = self.grant_auth(params["Password"])
+                response = self.grant_auth(params)
             case "Append Forecast Data Request":
                 response = self.append_forecast(authcode, params)
             case "Edit Forecast Data Request":
@@ -243,12 +244,18 @@ class WEP_Server():
             NestedData = response_fcs
         )
 
-    def grant_auth(self, password: str, duration: int = 60) -> str:
+    def grant_auth(self, params, duration: int = 60) -> str:
         """Check if the password matches one of an authorized user,
         then generate & store a temporary authorization code.
         Provide that & the expiry time to the user.
         """
         self.clean_auth()
+
+        try: 
+            password = params["Password"]
+        except (TypeError,KeyError):
+            return self.give_error("MISSING PARAMETER")
+        
         if password not in self.accepted_passwords:
             # Realized none of our errors really make sense if someone
             # without auth tries to get it. Closest match.
