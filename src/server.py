@@ -201,7 +201,7 @@ class WEP_Server():
         """Provide the forecast for a specific location up to a # of days."""
 
         # For maximum compatibility we allow some leeway for mixing up location names and location codes, as "Location" was not clearly defined in the spec
-        if "Location" not in params and  "LocationCode" not in params and "LocationName" not in params:
+        if params is None or ("Location" not in params and "LocationCode" not in params and "LocationName" not in params):
             return self.error_response(
                 error_code="MISSING PARAMETER",
                 message="No location was provided, or the parameter name was incorrect"
@@ -249,7 +249,7 @@ class WEP_Server():
         
         # return result
         return messages.format_message(
-            message_type = "Locations Response",
+            message_type = "Forecast Response",
             Location = location_code,
             NestedData = response_fcs
         )
@@ -337,11 +337,11 @@ class WEP_Server():
             next_day += tdelt(days=1)
 
         # adds forecase
-        self.location_forecasts[next_day] = conditions.copy()
+        loc_forecasts[next_day] = conditions.copy()
 
         return messages.format_message(
             message_type = "Append Forecast Data Response",
-            Location = self.locations[location_code],
+            Location = location_code,
             Date = next_day,
             **conditions
         )
