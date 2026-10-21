@@ -278,14 +278,22 @@ class WEP_Server():
         for a location.
         """
         self.clean_auth()
-        location_code = params["Location"]
+
+        # For maximum compatibility we allow some leeway for mixing up location names and location codes, as "Location" was not clearly defined in the spec
+        if "Location" not in params and  "LocationCode" not in params and "LocationName" not in params:
+            return self.give_error("MISSING PARAMETER")
+        else:
+            loc = params.get("Location", params.get("LocationCode", params.get("LocationName")))
+            try:
+                location_code = self.locations_error_correction(loc)
+            except Exception as e:
+                return self.give_error("UNKNOWN LOCATION")
+
         conditions = {}
         for c in CONDITION_TYPES:
             if c in params:
                 conditions[c]=params[c]
-
-        if location_code not in self.locations:
-            return self.give_error("UNKNOWN LOCATION")
+        
         if not set(CONDITION_TYPES).issubset(conditions):
             return self.give_error("MISSING PARAMETER")
         if authcode not in self.authcodes:
@@ -296,7 +304,6 @@ class WEP_Server():
             if cond not in CONDITION_TYPES:
                 return self.give_error("INVALID FIELD")
         
-        
         # find next unset day
         loc_forecasts = self.forecasts[location_code]
         next_day = date.today()
@@ -306,10 +313,6 @@ class WEP_Server():
         # adds forecase
         self.location_forecasts[next_day] = conditions.copy()
 
-        # return {"Message Type": "Append Forecast Data Response", 
-        #         "Location": self.locations[location_code], "Date": next_day.isoformat(),
-        #         "Conditions": conditions}
-
         return messages.format_message(
             message_type = "Append Forecast Data Response",
             Location = self.locations[location_code],
@@ -317,55 +320,46 @@ class WEP_Server():
             **conditions
         )
 
-    # def edit_forecast(self, authcode: str, location_code: str, forec_date: date,
-    #                         conditions: dict[str, float|int|str]) -> dict:
+
     def edit_forecast(self, authcode: str, params) -> str:
         """Updates the forecast on a given date with those conditions."""
         self.clean_auth() # to ensure authcode is fine
         
-        location_code = params["Location"]
+        # For maximum compatibility we allow some leeway for mixing up location names and location codes, as "Location" was not clearly defined in the spec
+        if "Location" not in params and  "LocationCode" not in params and "LocationName" not in params:
+            return self.give_error("MISSING PARAMETER")
+        else:
+            loc = params.get("Location", params.get("LocationCode", params.get("LocationName")))
+            try:
+                location_code = self.locations_error_correction(loc)
+            except Exception as e:
+                return self.give_error("UNKNOWN LOCATION")
+
         conditions = {}
         for c in CONDITION_TYPES:
             if c in params:
                 conditions[c]=params[c]
         forec_date = params["Date"]
 
-        if location_code not in self.locations:
-            return self.give_error("UNKNOWN LOCATION")
-        # if not set(CONDITION_TYPES).issubset(conditions):
-        #     return self.give_error("MISSING PARAMETER")
         if authcode not in self.authcodes:
             return self.give_error("NEED AUTH")
         for cond in conditions:
             if cond not in CONDITION_TYPES:
                 return self.give_error("INVALID FIELD")
-        # try:
-        #     parsed_date = dt.strptime(forec_date, "%Y-%m-%d")
-        # except ValueError:
-        #     return self.give_error("INVALID FIELD")
-        # if parsed_date.strftime("%Y-%m-%d") != forec_date:
-        #     return self.give_error("INVALID FIELD")
+        
         if forec_date not in self.forecasts[location_code]:
             return self.give_error("INVALID FIELD")
 
-        current = self.forecasts[location_code][forec_date]
-        # old_conds = {
-        #     cond: current[cond] for cond in conditions
-        # }
+        current_forecast = self.forecasts[location_code][forec_date]
 
         old_conds = {}
         new_conds = {}
         for cond_name,cond_val in conditions.items():
-            old_conds[cond_name] = current[cond_name]
+            old_conds[cond_name] = current_forecast[cond_name]
             #In order to account for issues where server and client might disagree on whether something is a float or an int
-            new_conds[cond_name] = type(current[cond_name])(cond_val)
+            new_conds[cond_name] = type(current_forecast[cond_name])(cond_val)
         
-        current.update(new_conds)
-        
-
-        # return {"Message Type": "Edit Forecast Data Response",
-        #         "Location": locations[location_code],
-        #         "Old": old_conds, "New": conditions.copy()}
+        current_forecast.update(new_conds)
     
         return messages.format_message(
             message_type = "Edit Forecast Data Response",
@@ -373,7 +367,6 @@ class WEP_Server():
             NestedData = {"Old": old_conds, "New": new_conds}
         )
 
-    # def add_location(self, authcode: str, loc_code: str, location: str) -> dict:
     def add_location(self, authcode: str|None, params: dict[Any]) -> str:
         """Updates the locations dict with a new location."""
         self.clean_auth() # to ensure authcode is fine
@@ -382,23 +375,16 @@ class WEP_Server():
         elif authcode not in self.authcodes:
             return self.give_error("NEED AUTH")
         
-        try: 
+        if "LocationCode" not in params:
+            return self.give_error("MISSING PARAMETER")
+        elif "LocationName" not in params:
+            return self.give_error("MISSING PARAMETER")
+        else: 
             loc_code = params["LocationCode"]
-        except (TypeError,KeyError):
-            return self.give_error("MISSING PARAMETER")
+            loc_name = params["LocationName"]
         
-        if loc_code in self.locations:
-            return self.give_error("PREEXISTING LOCATION")
-        
-        try: 
-            location = params["LocationName"]
-        except (TypeError,KeyError):
-            return self.give_error("MISSING PARAMETER")
-        
-        self.locations[loc_code] = location
+        self.locations[loc_code] = loc_name
         self.forecasts[loc_code] = {}
-
-        # return {"Message Type": "Append Location Data Response"}
     
         return messages.format_message(
             message_type = "Append Location Data Response"
@@ -408,12 +394,6 @@ class WEP_Server():
         """Given an error code, passes back an error response with the
         appropriate message.
         """
-        # if error_code in ERROR_DICT:
-        #     return {"Message Type": "Error Message",
-        #         "ErrorCode": error_code, "Message": ERROR_DICT[error_code]}
-        # else:
-        #     return {"Message Type": "Error Message",
-        #         "ErrorCode": "MISC ERROR", "Message": ERROR_DICT["MISC ERROR"]}
         
         if error_code not in ERROR_DICT:
             error_code = "MISC ERROR"
