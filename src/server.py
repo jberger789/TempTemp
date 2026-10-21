@@ -87,34 +87,41 @@ class WEP_Server():
         # Parse Message type
         message = data.decode("ascii")
         # TODO: depending on implementation, may have to try-catch errors
-        mtype, authcode, params = messages.unformat_message(message)
+        try:
+            mtype, authcode, params = messages.unformat_message(message)
         
-        # Match to an existing one or throw an error
-        # Given a specific message type, go to a specific routine
-        match mtype:
-            case "Status Request":
-                response = self.get_status()
-            case "Locations Request":
-                response = self.get_locations(params)
-            case "Forecast Request":
-                response = self.get_forecasts(params)
-            case "Auth Request":
-                response = self.grant_auth(params)
-            case "Append Forecast Data Request":
-                response = self.append_forecast(authcode, params)
-            case "Edit Forecast Data Request":
-                response = self.edit_forecast(authcode, params)
-            case "Append Location Data Request":
-                # response = self.add_location(authcode, params["LocationCode"],\
-                #     params["LocationName"])
-                response = self.add_location(authcode, params)
-            case _:
-                response = self.give_error("UNKNOWN MESSAGE")
+            # Match to an existing one or throw an error
+            # Given a specific message type, go to a specific routine
+            match mtype:
+                case "Status Request":
+                    response = self.get_status()
+                case "Locations Request":
+                    response = self.get_locations(params)
+                case "Forecast Request":
+                    response = self.get_forecasts(params)
+                case "Auth Request":
+                    response = self.grant_auth(params)
+                case "Append Forecast Data Request":
+                    response = self.append_forecast(authcode, params)
+                case "Edit Forecast Data Request":
+                    response = self.edit_forecast(authcode, params)
+                case "Append Location Data Request":
+                    # response = self.add_location(authcode, params["LocationCode"],\
+                    #     params["LocationName"])
+                    response = self.add_location(authcode, params)
+                case _:
+                    response = self.give_error("UNKNOWN MESSAGE")
 
-        # params = {key:val for key, val in response.items() if key != "Message Type"}
-        # data = messages.format_message(response["Message Type"], None,params)
-        data = response
+            # params = {key:val for key, val in response.items() if key != "Message Type"}
+            # data = messages.format_message(response["Message Type"], None,params)
+            data = response
 
+            # print(f"  <- {len(data)} bytes from {addr[0]}:{addr[1]}: {data!r}", flush=True)
+            # return data.encode()
+        
+        except Exception:
+            data = self.give_error(error_code="INVALID FORMAT")
+        
         print(f"  <- {len(data)} bytes from {addr[0]}:{addr[1]}: {data!r}", flush=True)
         return data.encode()
 
