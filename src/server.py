@@ -16,7 +16,7 @@ import string
 import random
 from datetime import datetime as dt, timedelta as tdelt, date
 
-from typing import Tuple
+from typing import Tuple, Any
 from itertools import islice
 
 import messages # Custom file for shared functionality
@@ -99,15 +99,15 @@ class WEP_Server():
             case "Forecast Request":
                 response = self.get_forecasts(params)
             case "Auth Request":
-                # response = self.grant_auth(params["Password"])
                 response = self.grant_auth(params)
             case "Append Forecast Data Request":
                 response = self.append_forecast(authcode, params)
             case "Edit Forecast Data Request":
                 response = self.edit_forecast(authcode, params)
             case "Append Location Data Request":
-                response = self.add_location(authcode, params["LocationCode"],\
-                    params["LocationName"])
+                # response = self.add_location(authcode, params["LocationCode"],\
+                #     params["LocationName"])
+                response = self.add_location(authcode, params)
             case _:
                 response = self.give_error("UNKNOWN MESSAGE")
 
@@ -377,13 +377,28 @@ class WEP_Server():
             NestedData = {"Old": old_conds, "New": new_conds}
         )
 
-    def add_location(self, authcode: str, loc_code: str, location: str) -> dict:
+    # def add_location(self, authcode: str, loc_code: str, location: str) -> dict:
+    def add_location(self, authcode: str|None, params: dict[Any]) -> str:
         """Updates the locations dict with a new location."""
         self.clean_auth() # to ensure authcode is fine
-        if authcode not in self.authcodes:
+        if authcode is None:
+            return self.give_error("MISSING PARAMETER")
+        elif authcode not in self.authcodes:
             return self.give_error("NEED AUTH")
+        
+        try: 
+            loc_code = params["LocationCode"]
+        except (TypeError,KeyError):
+            return self.give_error("MISSING PARAMETER")
+        
         if loc_code in self.locations:
             return self.give_error("PREEXISTING LOCATION")
+        
+        try: 
+            location = params["LocationName"]
+        except (TypeError,KeyError):
+            return self.give_error("MISSING PARAMETER")
+        
         self.locations[loc_code] = location
         self.forecasts[loc_code] = {}
 
