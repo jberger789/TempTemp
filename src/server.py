@@ -112,8 +112,6 @@ class WEP_Server():
                 case _:
                     response = self.give_error("UNKNOWN MESSAGE")
 
-            # params = {key:val for key, val in response.items() if key != "Message Type"}
-            # data = messages.format_message(response["Message Type"], None,params)
             data = response
         
         print(f"  <- {len(data)} bytes from {addr[0]}:{addr[1]}: {data!r}", flush=True)
@@ -150,16 +148,6 @@ class WEP_Server():
         If an Admin is active,
         & Uptime.
         """
-        # I think we forgot a TimeZone field in the spec
-        # response = {"Message Type": "Status Response","CurTime": None, "LocalDate": None,
-        #     "TimeZone": None,"AdminActive": admin_active, "Uptime": None}
-        
-        # now = dt.now().astimezone()
-
-        # response["CurTime"] = now.strftime("%H:%M")
-        # response["LocalDate"] = now.strftime("%Y-%m-%d")
-        # response["TimeZone"] = now.tzname()
-        # response["Uptime"] = (now-start_time).total_seconds()
 
         return messages.format_message(
             message_type="Status Response",
@@ -169,13 +157,14 @@ class WEP_Server():
             Uptime = (dt.now() - self.start_time).total_seconds()
         )
 
-    def get_locations(self,params) -> str:
+    def get_locations(self, params: Any|None) -> str:
         """Provide the location dictionary.
         Convert it into a string matching format specification.
         """
         if params is not None and "Limit" in params and params["Limit"] != -1:
             limit = params["Limit"]
         else:
+            # Otherwise use the default of all locations
             limit = len(self.locations)
         
         if limit < -1:
@@ -189,32 +178,40 @@ class WEP_Server():
             LocationDictionary=rdict
         )
 
-    # def get_forecasts(self,location_code: str, condition_names: list[str] | None = None, additional_days: int = 0) -> str:
+    def locations_error_correction(self, loc: str) -> str:
+        """Returns the appropriate location code for either a location code or location name, to ameliorate spec ambiguity"""
+        
+        if loc in self.locations.keys():
+            return loc
+        else:
+            if loc in self.locations.values():
+                # Set it to the location code that matches the received location
+                for k,v in self.locations.items():
+                    if v == loc:
+                        return k 
+            else:
+                print("TESTESTEST")
+                raise(ValueError(f"{loc} is not a valid location"))
+
+
     def get_forecasts(self, params) -> str:
 
         """Provide the forecast for a specific location up to a # of days."""
-        if "Location" not in params:
-            self.give_error("MISSING PARAMETER")
-        else:
-            location_code = params["Location"]
-            if location_code not in self.locations:
-                return self.give_error("UNKNOWN LOCATION")
-        
 
-        # if location_code not in self.locations:
-        #     return self.give_error("UNKNOWN LOCATION")
-        # if "AdditionalDays" not in params:
-        #     additional_days = 0
-        # else:
-        #     additional_days = params["AdditionalDays"]
+        # For maximum compatibility we allow some leeway for mixing up location names and location codes, as "Location" was not clearly defined in the spec
+        if "Location" not in params and  "LocationCode" not in params and "LocationName" not in params:
+            return self.give_error("MISSING PARAMETER")
+        else:
+            loc = params.get("Location", params.get("LocationCode", params.get("LocationName")))
+            try:
+                location_code = self.locations_error_correction(loc)
+            except Exception as e:
+                return self.give_error("UNKNOWN LOCATION")
 
         additional_days = params.get("AdditionalDays", 0)
         
         if additional_days > 14 or additional_days < 0:
             return self.give_error("INVALID DAYS")
-
-        # result = {"Message Type": "Forecast Response",
-        #         "Location": self.location[location_code]}
 
         condition_names = params.get("ConditionNames", None)
 
@@ -242,7 +239,6 @@ class WEP_Server():
         # return result
         return messages.format_message(
             message_type = "Locations Response",
-            # Location = self.locations[location_code],
             Location = location_code,
             NestedData = response_fcs
         )
@@ -270,9 +266,6 @@ class WEP_Server():
         expireTime = dt.now()+tdelt(minutes=duration)
 
         self.authcodes[authcode] = expireTime
-
-        # return {"Message Type": "Auth Response",
-        #     "Code": authcode, "ExpiryTime": int(expireTime.timestamp())}
 
         return messages.format_message(
             message_type = "Auth Response",
