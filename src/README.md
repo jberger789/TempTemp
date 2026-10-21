@@ -36,14 +36,14 @@ For example:
 ```
 Raw Response: Locations Response||LocationDictionary_MS_(BOS->Boston,,NYC->New York,,TKY->Tokyo,,SGP->Singapore,,LAX->Los Angeles,,DET->Detroit)
 Message Type: Locations Response
-Message Parameters: {'LocationDiction': {'BOS': 'Boston', 'NYC': 'New York', 'TKY': 'Tokyo', 'SGP': 'Singapore', 'LAX': 'Los Angeles', 'DET': 'Detroit'}}
+Message Parameters: {'LocationDictionary': {'BOS': 'Boston', 'NYC': 'New York', 'TKY': 'Tokyo', 'SGP': 'Singapore', 'LAX': 'Los Angeles', 'DET': 'Detroit'}}
 ```
 And using a more formal `Locations Request || Limit_I_2` (ask for the first 2 locations)
 is responded with
 ```
 Raw Response: Locations Response||LocationDictionary_MS_(BOS->Boston,,NYC->New York)
 Message Type: Locations Response
-Message Parameters: {'LocationDiction': {'BOS': 'Boston', 'NYC': 'New York'}}
+Message Parameters: {'LocationDictionary': {'BOS': 'Boston', 'NYC': 'New York'}}
 ```
 We can get the forecast data now that we have locations.
 ```
@@ -59,9 +59,9 @@ We predefine 3 passwords to try: `password123`,`XKCD`, and `123!/x`.
 Using an incorrect password to try and get an auth code:  
 ```
 > Auth Request||     Password_S_ABCD
-Raw Response: Error Message||ErrorCode_S_NEED AUTH;Message_S_Insufficient authorization provided for the attempted action.
+Raw Response: Error Message||ErrorCode_S_NEED AUTH;Message_S_The provided password was not valid
 Message Type: Error Message
-Message Parameters: {'ErrorCode': 'NEED AUTH', 'Message': 'Insufficient authorization provided for the attempted action.'}
+Message Parameters: {'ErrorCode': 'NEED AUTH', 'Message': 'Incorrect Password'}
 ```
 Using a correct password:
 ```
@@ -76,14 +76,14 @@ information.
 > Edit Forecast Data Request|89Np32|Location_S_BOS; Date_D_2026-10-20;Temp_F_58;Desc_S_Sunny;PChance_I_99
 Raw Response: Edit Forecast Data Response||Location_S_Boston;Old/Desc_S_Storms;Old/PChance_I_41;Old/Temp_F_60.3;New/Desc_S_Sunny;New/PChance_I_99;New/Temp_F_58.0
 Message Type: Edit Forecast Data Response
-Message Parameters: {'Location': 'Boston', 'NestedData': {'Old': {'Desc': 'Storms', 'PChance': 41, 'Temp': 60.3}, 'New': {'Desc': 'Sunny', 'PChance': 99, 'Temp': 58.0}}}
+Message Parameters: {'Location': 'Boston', 'NestedData': {'Old': {'Desc': 'Storms', 'PChance': 41, 'Temp': 60.3}, 'New': {'Desc': 'Sunny', 'PChance': 99.0, 'Temp': 58.0}}}
 ```
 Calling Forecast Request to confirm the changes shows they were successful:
 ```
 > Forecast Request || Location_S_BOS;ConditionNames_LS_(Temp,,Desc,,PChance); AdditionalDays_I_2
 Raw Response: Locations Response||Location_S_BOS;0/Desc_S_Sunny;0/PChance_I_99;0/Temp_F_58.0;1/Desc_S_Sunny;1/PChance_I_49;1/Temp_F_63.2;2/Desc_S_Cloudy;2/PChance_I_40;2/Temp_F_57.1
 Message Type: Locations Response
-Message Parameters: {'Location': 'BOS', 'NestedData': {'0': {'Desc': 'Sunny', 'PChance': 99, 'Temp': 58.0}, '1': {'Desc': 'Sunny', 'PChance': 49, 'Temp': 63.2}, '2': {'Desc': 'Cloudy', 'PChance': 40, 'Temp': 57.1}}}
+Message Parameters: {'Location': 'BOS', 'NestedData': {'0': {'Desc': 'Sunny', 'PChance': 99, 'Temp': 58.0}, '1': {'Desc': 'Sunny', 'PChance': 49, 'Temp': 63.2}, '2': {'Desc': 'Cloudy', 'PChance': 40.0, 'Temp': 57.1}}}
 ```
 etc. etc.
 ## Known limitations
@@ -93,6 +93,16 @@ patently absurd. The specified ordering had parameters (An unknown location) bei
 evaluated before the message type was even known!  
 We opted to not use this particular ordering, as it is much easier to check for
 parameter mismatches *after* the higher level error possibilities have been evaluated.
+
+We realized that although the spec was clear on what LocationCode and LocationName referred to, there was some ambiguity as to what "Location" meant (though the examples treated it the same as Location Code). In order to work around this, we wrote some code to try to correct any understandable errors related to this ambiguity - though in theory it could introduce issues in the event that there are any situations where two locations with distinct LocationCodes have the same LocationName (which would be true in real life, though not as much of a concern at the scale for this assignement), though these issues will not cause errors, they will simply provide data for a different location than desired.  In theory it should try to use the provided value as a LocationCode first, but this was not rigorously tested.
+
+Another issue was that the examples in the spec treated PChance as an int, but elsewhere in the spec PChance was defined as a float - we made some effort to resolve the ambiguity but it was not possible to ensure that we will not have issues with the other team without having communicated with them.
+
+Relatedly, the spec implies that the Status Response parameter AdminActive was a bool, but bools were never defined in the message format section of the spec, so we instead treated it as a string.  If we had more time we would have tried to add some error handling to this.
+
+In general, we did not have time to rigorously test every possible type of input or error that could even be reasonably expected, so it is possible that there are many errors that we failed to catch.  FoFor example, one major edge case we did not check is what might happen if some tried to submit a multiply nested dictionary, though most likely it would just result in a format error.  We also did not have a chance to thoroughly test running the code on separate devices, different operating systems, etc.  If we had more time it would have also been nice to document the code a bit better as some parts are perhaps a bit confusing.
+
+Additional Features we would have liked to implement:
 
 We had discussed the possibility of both including the possibility of Celsius 
 temperatures, and of time zone conversion for queries where the client is in a 
