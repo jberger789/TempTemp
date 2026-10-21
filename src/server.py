@@ -95,10 +95,9 @@ class WEP_Server():
             case "Status Request":
                 response = self.get_status()
             case "Locations Request":
-                response = self.get_locations(params["Limit"])
+                response = self.get_locations(params)
             case "Forecast Request":
-                response = self.get_forecasts(params["Location"], \
-                    params["ConditionNames"], params["AdditionalDays"])
+                response = self.get_forecasts(params)
             case "Auth Request":
                 response = self.grant_auth(params["Password"])
             case "Append Forecast Data Request":
@@ -168,12 +167,15 @@ class WEP_Server():
             Uptime = (dt.now() - self.start_time).total_seconds()
         )
 
-    def get_locations(self,limit: int = -1) -> str:
+    def get_locations(self,params) -> str:
         """Provide the location dictionary.
         Convert it into a string matching format specification.
         """
-        if limit == -1:
+        if params is not None and "Limit" in params and params["Limit"] != -1:
+            limit = params["Limit"]
+        else:
             limit = len(self.locations)
+            
         # get items in location. make a list of them. truncate based on limit.
         # make a dict of that.
         # return {"Message Type": "Locations Response",
@@ -183,15 +185,35 @@ class WEP_Server():
             LocationDiction=dict(islice(self.locations.items(), limit))
         )
 
-    def get_forecasts(self,location_code: str, condition_names: list[str] | None = None, additional_days: int = 0) -> str:
+    # def get_forecasts(self,location_code: str, condition_names: list[str] | None = None, additional_days: int = 0) -> str:
+    def get_forecasts(self, params) -> str:
+
         """Provide the forecast for a specific location up to a # of days."""
-        if location_code not in self.locations:
-            return self.give_error("UNKNOWN LOCATION")
+        if "Location" not in params:
+            self.give_error("MISSING PARAMETER")
+        else:
+            location_code = params["Location"]
+            if location_code not in self.locations:
+                return self.give_error("UNKNOWN LOCATION")
+        
+
+        # if location_code not in self.locations:
+        #     return self.give_error("UNKNOWN LOCATION")
+        # if "AdditionalDays" not in params:
+        #     additional_days = 0
+        # else:
+        #     additional_days = params["AdditionalDays"]
+
+        additional_days = params.get("AdditionalDays", 0)
+        
         if additional_days > 14 or additional_days < 0:
             return self.give_error("INVALID DAYS")
 
         # result = {"Message Type": "Forecast Response",
         #         "Location": self.location[location_code]}
+
+        condition_names = params.get("ConditionNames", None)
+
         loc_forecasts = self.forecasts[location_code]
 
         response_fcs = {}
@@ -324,11 +346,19 @@ class WEP_Server():
             return self.give_error("INVALID FIELD")
 
         current = self.forecasts[location_code][forec_date]
-        old_conds = {
-            cond: current[cond] for cond in conditions
-        }
+        # old_conds = {
+        #     cond: current[cond] for cond in conditions
+        # }
+
+        old_conds = {}
+        new_conds = {}
+        for cond_name,cond_val in conditions.items():
+            old_conds[cond_name] = current[cond_name]
+            #In order to account for issues where server and client might disagree on whether something is a float or an int
+            new_conds[cond_name] = type(current[cond_name])(cond_val)
         
-        current.update(conditions)
+        current.update(new_conds)
+        
 
         # return {"Message Type": "Edit Forecast Data Response",
         #         "Location": locations[location_code],
@@ -337,7 +367,7 @@ class WEP_Server():
         return messages.format_message(
             message_type = "Edit Forecast Data Response",
             Location = self.locations[location_code],
-            NestedData = {"Old": old_conds, "New": conditions.copy()}
+            NestedData = {"Old": old_conds, "New": new_conds}
         )
 
     def add_location(self, authcode: str, loc_code: str, location: str) -> dict:
@@ -397,7 +427,7 @@ class WEP_Server():
             "WSpeed": None}
         wdict["Desc"] = random.choice(CONDITIONS["Desc"])
         wdict["Humid"] = round(random.uniform(0, 100), 2)
-        wdict["PChance"] = int(round(random.uniform(0, 100), 2))
+        wdict["PChance"] = round(random.uniform(0, 100), 2)
         wdict["PType"] = random.choice(CONDITIONS["PType"])
         # gets a random temp & clamps b/w -10 and 105 F.
         wdict["Temp"] = round(max(-10, min(105 ,random.normalvariate(65, 15))), 1)
