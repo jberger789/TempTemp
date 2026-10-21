@@ -95,7 +95,9 @@ class WEP_Server():
             case "Status Request":
                 response = self.get_status()
             case "Locations Request":
-                response = self.get_locations(params["Limit"])
+                if params == None:
+                    response = self.get_locations()
+                else: response = self.get_locations(params["Limit"])
             case "Forecast Request":
                 response = self.get_forecasts(params["Location"], \
                     params["ConditionNames"], params["AdditionalDays"])
