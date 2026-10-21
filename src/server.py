@@ -50,7 +50,7 @@ class WEP_Server():
         # default server vars
         # Server status vars
         self.start_time = dt.now()
-        self.admin_active = False
+        self.admin_active = "False"
         #location dict
         self.locations = {
             "BOS": "Boston",
@@ -66,7 +66,7 @@ class WEP_Server():
             code: self.generate_forecast() for code in self.locations
         }
         # set up codes
-        self.accepted_passwords = ["Password123", "XKCD", "123!/x"]
+        self.accepted_passwords = ["password123", "XKCD", "123!/x"]
         # dict. Key = password, value = tuple of Code & ExpiryTime
         self.authcodes = {}
 
@@ -87,7 +87,7 @@ class WEP_Server():
         # Parse Message type
         message = data.decode("ascii")
         # TODO: depending on implementation, may have to try-catch errors
-        mtype, acode, params = messages.unformat_message(message)
+        mtype, authcode, params = messages.unformat_message(message)
         
         # Match to an existing one or throw an error
         # Given a specific message type, go to a specific routine
@@ -102,21 +102,21 @@ class WEP_Server():
             case "Auth Request":
                 response = self.grant_auth(params["Password"])
             case "Append Forecast Data Request":
-                response = self.append_forecast(acode, params)
+                response = self.append_forecast(authcode, params)
             case "Edit Forecast Data Request":
-                response = self.edit_forecast(acode, params["Location"], params["Date"],\
-                    params["Conditions"])
+                response = self.edit_forecast(authcode, params)
             case "Append Location Data Request":
-                response = self.add_location(acode, params["LocationCode"],\
+                response = self.add_location(authcode, params["LocationCode"],\
                     params["LocationName"])
             case _:
                 response = self.give_error("UNKNOWN MESSAGE")
 
-        params = {key:val for key, val in response.items() if key != "Message Type"}
-        data = messages.format_message(response["Message Type"], None,params)
+        # params = {key:val for key, val in response.items() if key != "Message Type"}
+        # data = messages.format_message(response["Message Type"], None,params)
+        data = response
 
         print(f"  <- {len(data)} bytes from {addr[0]}:{addr[1]}: {data!r}", flush=True)
-        return data
+        return data.encode()
 
     #TODO:
     def error_check(self, message: str) -> Tuple[bool, dict]:
@@ -162,10 +162,10 @@ class WEP_Server():
 
         return messages.format_message(
             message_type="Status Response",
-            CurTime = dt.time.now(),
-            LocalDate = date.now(),
+            CurTime = dt.now().time(),
+            LocalDate = date.today(),
             AdminActive = self.admin_active,
-            Uptime = (dt.time.now()-self.start_time).total_seconds()
+            Uptime = (dt.now() - self.start_time).total_seconds()
         )
 
     def get_locations(self,limit: int = -1) -> str:
@@ -180,7 +180,7 @@ class WEP_Server():
         #     "LocationDictionary": dict(list(self.locations.items())[:limit])}
         return messages.format_message(
             message_type="Locations Response",
-            LocationDiction=dict(islice(self.locations[:limit].items(), limit))
+            LocationDiction=dict(islice(self.locations.items(), limit))
         )
 
     def get_forecasts(self,location_code: str, condition_names: list[str] | None = None, additional_days: int = 0) -> str:
@@ -190,15 +190,15 @@ class WEP_Server():
         if additional_days > 14 or additional_days < 0:
             return self.give_error("INVALID DAYS")
 
-        result = {"Message Type": "Forecast Response",
-                "Location": self.location[location_code]}
+        # result = {"Message Type": "Forecast Response",
+        #         "Location": self.location[location_code]}
         loc_forecasts = self.forecasts[location_code]
 
         response_fcs = {}
 
         # additional_days+1 since default is to only give today
         for day_num in range(additional_days+1):
-            day = (day.today() + tdelt(days=day_num))
+            day = (date.today() + tdelt(days=day_num))
             # for safety
             if day not in loc_forecasts:
                 continue
@@ -216,7 +216,8 @@ class WEP_Server():
         # return result
         return messages.format_message(
             message_type = "Locations Response",
-            Location = self.location[location_code],
+            # Location = self.locations[location_code],
+            Location = location_code,
             NestedData = response_fcs
         )
 
@@ -247,7 +248,7 @@ class WEP_Server():
             ExpiryTime = int(expireTime.timestamp())
         )
 
-    def append_forecast(self,authcode: str, params: dict) -> str:
+    def append_forecast(self, authcode: str, params: dict) -> str:
         """If user is authenticated, appends the day's conditions to the next open date
         for a location.
         """
@@ -291,14 +292,23 @@ class WEP_Server():
             **conditions
         )
 
-    def edit_forecast(self, authcode: str, location_code: str, forec_date: date,
-                            conditions: dict[str, float|int|str]) -> dict:
+    # def edit_forecast(self, authcode: str, location_code: str, forec_date: date,
+    #                         conditions: dict[str, float|int|str]) -> dict:
+    def edit_forecast(self, authcode: str, params) -> str:
         """Updates the forecast on a given date with those conditions."""
         self.clean_auth() # to ensure authcode is fine
+        
+        location_code = params["Location"]
+        conditions = {}
+        for c in CONDITION_TYPES:
+            if c in params:
+                conditions[c]=params[c]
+        forec_date = params["Date"]
+
         if location_code not in self.locations:
             return self.give_error("UNKNOWN LOCATION")
-        if not set(CONDITION_TYPES).issubset(conditions):
-            return self.give_error("MISSING PARAMETER")
+        # if not set(CONDITION_TYPES).issubset(conditions):
+        #     return self.give_error("MISSING PARAMETER")
         if authcode not in self.authcodes:
             return self.give_error("NEED AUTH")
         for cond in conditions:
@@ -346,7 +356,7 @@ class WEP_Server():
             message_type = "Append Location Data Response"
         )
 
-    def give_error(error_code: str) -> dict:
+    def give_error(self, error_code: str) -> dict:
         """Given an error code, passes back an error response with the
         appropriate message.
         """
@@ -387,7 +397,7 @@ class WEP_Server():
             "WSpeed": None}
         wdict["Desc"] = random.choice(CONDITIONS["Desc"])
         wdict["Humid"] = round(random.uniform(0, 100), 2)
-        wdict["PChance"] = round(random.uniform(0, 100), 2)
+        wdict["PChance"] = int(round(random.uniform(0, 100), 2))
         wdict["PType"] = random.choice(CONDITIONS["PType"])
         # gets a random temp & clamps b/w -10 and 105 F.
         wdict["Temp"] = round(max(-10, min(105 ,random.normalvariate(65, 15))), 1)
