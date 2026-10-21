@@ -24,7 +24,7 @@ python3 src/client.py --host <server ip> --port 9000
 ## Example session
 <!-- Paste a short transcript: what you typed, what came back. -->
 Type queries as they appear in spec v2 -  
-`"Message Type" | "Auth Code" (optional) | "Parameter Name"\_"Parameter type"\_"Parameter value"`  
+`"Message Type" | "Auth Code" (optional) | "Parameter Name"_"Parameter type"_"Parameter value"`  
 with a ";" between Parameters.
 
 Responses will be printed as the raw response message, and a (slightly) more legibly
@@ -34,14 +34,14 @@ For example:
 
 `Locations Request ||` (ask for all locations), is successfully responded with
 ```
-Raw Response: Locations Response||LocationDiction_MS_(BOS->Boston,,NYC->New York,,TKY->Tokyo,,SGP->Singapore,,LAX->Los Angeles,,DET->Detroit)
+Raw Response: Locations Response||LocationDictionary_MS_(BOS->Boston,,NYC->New York,,TKY->Tokyo,,SGP->Singapore,,LAX->Los Angeles,,DET->Detroit)
 Message Type: Locations Response
 Message Parameters: {'LocationDiction': {'BOS': 'Boston', 'NYC': 'New York', 'TKY': 'Tokyo', 'SGP': 'Singapore', 'LAX': 'Los Angeles', 'DET': 'Detroit'}}
 ```
 And using a more formal `Locations Request || Limit_I_2` (ask for the first 2 locations)
 is responded with
 ```
-Raw Response: Locations Response||LocationDiction_MS_(BOS->Boston,,NYC->New York)
+Raw Response: Locations Response||LocationDictionary_MS_(BOS->Boston,,NYC->New York)
 Message Type: Locations Response
 Message Parameters: {'LocationDiction': {'BOS': 'Boston', 'NYC': 'New York'}}
 ```

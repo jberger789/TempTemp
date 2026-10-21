@@ -86,10 +86,12 @@ class WEP_Server():
         response = None
         # Parse Message type
         message = data.decode("ascii")
-        # TODO: depending on implementation, may have to try-catch errors
         try:
             mtype, authcode, params = messages.unformat_message(message)
-        
+        except Exception:
+            # Catch errors when trying to parse incoming messages
+            data = self.give_error(error_code="INVALID FORMAT")
+        else:
             # Match to an existing one or throw an error
             # Given a specific message type, go to a specific routine
             match mtype:
@@ -106,8 +108,6 @@ class WEP_Server():
                 case "Edit Forecast Data Request":
                     response = self.edit_forecast(authcode, params)
                 case "Append Location Data Request":
-                    # response = self.add_location(authcode, params["LocationCode"],\
-                    #     params["LocationName"])
                     response = self.add_location(authcode, params)
                 case _:
                     response = self.give_error("UNKNOWN MESSAGE")
@@ -115,12 +115,6 @@ class WEP_Server():
             # params = {key:val for key, val in response.items() if key != "Message Type"}
             # data = messages.format_message(response["Message Type"], None,params)
             data = response
-
-            # print(f"  <- {len(data)} bytes from {addr[0]}:{addr[1]}: {data!r}", flush=True)
-            # return data.encode()
-        
-        except Exception:
-            data = self.give_error(error_code="INVALID FORMAT")
         
         print(f"  <- {len(data)} bytes from {addr[0]}:{addr[1]}: {data!r}", flush=True)
         return data.encode()
@@ -183,14 +177,16 @@ class WEP_Server():
             limit = params["Limit"]
         else:
             limit = len(self.locations)
-            
-        # get items in location. make a list of them. truncate based on limit.
-        # make a dict of that.
-        # return {"Message Type": "Locations Response",
-        #     "LocationDictionary": dict(list(self.locations.items())[:limit])}
+        
+        if limit < -1:
+            return self.give_error(error_code="INVALID FIELD")
+        
+        # Truncate the returned dict based on limit
+        rdict = dict(islice(self.locations.items(), limit)) 
+
         return messages.format_message(
             message_type="Locations Response",
-            LocationDiction=dict(islice(self.locations.items(), limit))
+            LocationDictionary=rdict
         )
 
     # def get_forecasts(self,location_code: str, condition_names: list[str] | None = None, additional_days: int = 0) -> str:
