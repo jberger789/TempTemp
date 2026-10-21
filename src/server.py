@@ -85,8 +85,8 @@ class WEP_Server():
         """
         response = None
         # Parse Message type
-        message = data.decode("ascii")
         try:
+            message = data.decode("ascii")
             mtype, authcode, params = messages.unformat_message(message)
         except Exception as e:
             # Catch errors when trying to parse incoming messages
@@ -458,7 +458,7 @@ class WEP_Server():
         
         # Use the default message for the error type if no useful information was passed
         if message == "":
-            ERROR_DICT[error_code]
+            message = ERROR_DICT[error_code]
 
         return messages.format_message(
             message_type = "Error Message",
